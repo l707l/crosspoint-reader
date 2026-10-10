@@ -202,7 +202,7 @@ bool HalGPIO::verifyPowerButtonWakeup() {
   // wheel click, so a click wake is always released before this samples and
   // verification would re-sleep on every wake. Its wheel has hard external
   // pull-ups, so the ghost-wake debounce this implements is not needed.
-  if (BoardConfig::isPaperMono() || BoardConfig::isM5PaperV11() || BoardConfig::ACTIVE.input.power < 0) {
+  if (BoardConfig::isPaperMono() || BoardConfig::isM5PaperV11() || BoardConfig::isSuperMiniS3WeAct37() || BoardConfig::ACTIVE.input.power < 0) {
     return true;
   }
 

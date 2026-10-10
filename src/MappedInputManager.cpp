@@ -369,6 +369,11 @@ bool MappedInputManager::wasPowerConfirmClick() const {
 #endif
 
 bool MappedInputManager::wasPressed(const Button button) const {
+  const uint16_t bit = (1u << static_cast<uint8_t>(button));
+  if (simulatedPressedMask & bit) {
+    simulatedPressedMask &= ~bit;
+    return true;
+  }
   if (button == Button::Confirm && homeAction == HomeButtonAction::Confirm) return true;
   if (button == Button::Back && wasBackGesture()) return true;
 #if FREEINK_CAP_TOUCH
@@ -378,6 +383,11 @@ bool MappedInputManager::wasPressed(const Button button) const {
 }
 
 bool MappedInputManager::wasReleased(const Button button) const {
+  const uint16_t bit = (1u << static_cast<uint8_t>(button));
+  if (simulatedReleasedMask & bit) {
+    simulatedReleasedMask &= ~bit;
+    return true;
+  }
   if (button == Button::Confirm && homeAction == HomeButtonAction::Confirm) return true;
   if (button == Button::Back && wasBackGesture()) return true;
 #if FREEINK_CAP_TOUCH

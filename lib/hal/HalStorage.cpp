@@ -37,6 +37,10 @@ bool HalStorage::begin() { return SDCard.begin(); }
 
 bool HalStorage::ready() const { return SDCard.ready(); }
 
+uint8_t HalStorage::errorCode() const { return SDCard.lastErrorCode(); }
+
+uint8_t HalStorage::errorData() const { return SDCard.lastErrorData(); }
+
 // For the rest of the methods, we acquire the mutex to ensure thread safety
 
 class HalStorage::StorageLock {

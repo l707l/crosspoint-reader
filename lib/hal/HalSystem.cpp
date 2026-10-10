@@ -159,6 +159,10 @@ static const char* resetReasonName(esp_reset_reason_t reason) {
   }
 }
 
+#ifndef CROSSPOINT_VERSION
+#define CROSSPOINT_VERSION "1.6.5"
+#endif
+
 std::string getPanicInfo(bool full) {
   if (!full) {
     return panicMessage;

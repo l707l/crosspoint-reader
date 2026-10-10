@@ -52,6 +52,11 @@ class MappedInputManager {
 #endif
   bool wasPressed(Button button) const;
   bool wasReleased(Button button) const;
+  void simulatePress(Button button) const {
+    const uint16_t bit = (1u << static_cast<uint8_t>(button));
+    simulatedPressedMask |= bit;
+    simulatedReleasedMask |= bit;
+  }
   // One-shot threshold event while the button is down; consumes its release.
   bool wasLongPressed(Button button, unsigned long thresholdMs) const;
   bool consumeSuppressedRelease() const;
@@ -132,6 +137,8 @@ class MappedInputManager {
   // read it here instead of CrossPointSettings.orientation, which is just the persisted reader
   // preference and stays "rotated" even while portrait UI like home/settings is on screen.
   const GfxRenderer& renderer;
+  mutable uint16_t simulatedPressedMask = 0;
+  mutable uint16_t simulatedReleasedMask = 0;
 
   Button mapScreenDirection(Button button) const;
   Labels mapFrontLabels(const char* back, const char* confirm, const char* left, const char* right) const;

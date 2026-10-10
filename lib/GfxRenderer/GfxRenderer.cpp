@@ -359,6 +359,32 @@ void GfxRenderer::ensureSdGlyphsResident(const int fontId, const char* text, con
 // This should always be inlined for better performance
 static inline void rotateCoordinates(const GfxRenderer::Orientation orientation, const int x, const int y, int* phyX,
                                      int* phyY, const uint16_t panelWidth, const uint16_t panelHeight) {
+  if (panelWidth < panelHeight) {
+    switch (orientation) {
+      case GfxRenderer::Portrait: {
+        *phyX = x;
+        *phyY = y;
+        break;
+      }
+      case GfxRenderer::LandscapeClockwise: {
+        *phyX = panelWidth - 1 - y;
+        *phyY = x;
+        break;
+      }
+      case GfxRenderer::PortraitInverted: {
+        *phyX = panelWidth - 1 - x;
+        *phyY = panelHeight - 1 - y;
+        break;
+      }
+      case GfxRenderer::LandscapeCounterClockwise: {
+        *phyX = y;
+        *phyY = panelHeight - 1 - x;
+        break;
+      }
+    }
+    return;
+  }
+
   switch (orientation) {
     case GfxRenderer::Portrait: {
       // Logical portrait (480x800) → panel (800x480)
@@ -1127,23 +1153,44 @@ void GfxRenderer::fillRectImpl(const int x, const int y, const int width, const 
     // dlxPerPhyX / dlyPerPhyX: how logical (x, y) change as phyX increments
     // along a physical row. Derived from inverting rotateCoordinates.
     int dlxPerPhyX = 0, dlyPerPhyX = 0;
-    switch (orientation) {
-      case Portrait:
-        dlxPerPhyX = 0;
-        dlyPerPhyX = 1;
-        break;
-      case PortraitInverted:
-        dlxPerPhyX = 0;
-        dlyPerPhyX = -1;
-        break;
-      case LandscapeClockwise:
-        dlxPerPhyX = -1;
-        dlyPerPhyX = 0;
-        break;
-      case LandscapeCounterClockwise:
-        dlxPerPhyX = 1;
-        dlyPerPhyX = 0;
-        break;
+    if (panelWidth < panelHeight) {
+      switch (orientation) {
+        case Portrait:
+          dlxPerPhyX = 1;
+          dlyPerPhyX = 0;
+          break;
+        case PortraitInverted:
+          dlxPerPhyX = -1;
+          dlyPerPhyX = 0;
+          break;
+        case LandscapeClockwise:
+          dlxPerPhyX = 0;
+          dlyPerPhyX = -1;
+          break;
+        case LandscapeCounterClockwise:
+          dlxPerPhyX = 0;
+          dlyPerPhyX = 1;
+          break;
+      }
+    } else {
+      switch (orientation) {
+        case Portrait:
+          dlxPerPhyX = 0;
+          dlyPerPhyX = 1;
+          break;
+        case PortraitInverted:
+          dlxPerPhyX = 0;
+          dlyPerPhyX = -1;
+          break;
+        case LandscapeClockwise:
+          dlxPerPhyX = -1;
+          dlyPerPhyX = 0;
+          break;
+        case LandscapeCounterClockwise:
+          dlxPerPhyX = 1;
+          dlyPerPhyX = 0;
+          break;
+      }
     }
 
     // The dither pattern has period 2 in logical space, and each orientation
@@ -1155,23 +1202,44 @@ void GfxRenderer::fillRectImpl(const int x, const int y, const int width, const 
     for (int parityIdx = 0; parityIdx < 2; ++parityIdx) {
       const int samplePy = phyY0 + parityIdx;
       int lxBase = 0, lyBase = 0;
-      switch (orientation) {
-        case Portrait:
-          lxBase = panelHeight - 1 - samplePy;
-          lyBase = byteStart * 8;
-          break;
-        case PortraitInverted:
-          lxBase = samplePy;
-          lyBase = panelWidth - 1 - byteStart * 8;
-          break;
-        case LandscapeClockwise:
-          lxBase = panelWidth - 1 - byteStart * 8;
-          lyBase = panelHeight - 1 - samplePy;
-          break;
-        case LandscapeCounterClockwise:
-          lxBase = byteStart * 8;
-          lyBase = samplePy;
-          break;
+      if (panelWidth < panelHeight) {
+        switch (orientation) {
+          case Portrait:
+            lxBase = byteStart * 8;
+            lyBase = samplePy;
+            break;
+          case PortraitInverted:
+            lxBase = panelWidth - 1 - byteStart * 8;
+            lyBase = panelHeight - 1 - samplePy;
+            break;
+          case LandscapeClockwise:
+            lxBase = samplePy;
+            lyBase = panelWidth - 1 - byteStart * 8;
+            break;
+          case LandscapeCounterClockwise:
+            lxBase = panelHeight - 1 - samplePy;
+            lyBase = byteStart * 8;
+            break;
+        }
+      } else {
+        switch (orientation) {
+          case Portrait:
+            lxBase = panelHeight - 1 - samplePy;
+            lyBase = byteStart * 8;
+            break;
+          case PortraitInverted:
+            lxBase = samplePy;
+            lyBase = panelWidth - 1 - byteStart * 8;
+            break;
+          case LandscapeClockwise:
+            lxBase = panelWidth - 1 - byteStart * 8;
+            lyBase = panelHeight - 1 - samplePy;
+            break;
+          case LandscapeCounterClockwise:
+            lxBase = byteStart * 8;
+            lyBase = samplePy;
+            break;
+        }
       }
       uint8_t mask = 0;
       for (int b = 0; b < 8; ++b) {
@@ -1924,6 +1992,17 @@ std::vector<std::string> GfxRenderer::wrappedText(const int fontId, const char* 
 
 // Note: Internal driver treats screen in command orientation; this library exposes a logical orientation
 int GfxRenderer::getScreenWidth() const {
+  if (panelWidth < panelHeight) {
+    switch (orientation) {
+      case Portrait:
+      case PortraitInverted:
+        return panelWidth;
+      case LandscapeClockwise:
+      case LandscapeCounterClockwise:
+        return panelHeight;
+    }
+    return panelWidth;
+  }
   switch (orientation) {
     case Portrait:
     case PortraitInverted:
@@ -1938,6 +2017,17 @@ int GfxRenderer::getScreenWidth() const {
 }
 
 int GfxRenderer::getScreenHeight() const {
+  if (panelWidth < panelHeight) {
+    switch (orientation) {
+      case Portrait:
+      case PortraitInverted:
+        return panelHeight;
+      case LandscapeClockwise:
+      case LandscapeCounterClockwise:
+        return panelWidth;
+    }
+    return panelHeight;
+  }
   switch (orientation) {
     case Portrait:
     case PortraitInverted:
@@ -1958,6 +2048,29 @@ void GfxRenderer::tapToLogical(float nx, float ny, int& outX, int& outY) const {
   if (phyX > panelWidth - 1) phyX = panelWidth - 1;
   if (phyY < 0) phyY = 0;
   if (phyY > panelHeight - 1) phyY = panelHeight - 1;
+
+  if (panelWidth < panelHeight) {
+    switch (orientation) {
+      case Portrait:
+        outX = phyX;
+        outY = phyY;
+        break;
+      case PortraitInverted:
+        outX = panelWidth - 1 - phyX;
+        outY = panelHeight - 1 - phyY;
+        break;
+      case LandscapeClockwise:
+        outX = phyY;
+        outY = panelWidth - 1 - phyX;
+        break;
+      case LandscapeCounterClockwise:
+      default:
+        outX = panelHeight - 1 - phyY;
+        outY = phyX;
+        break;
+    }
+    return;
+  }
 
   switch (orientation) {
     case Portrait:

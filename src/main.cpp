@@ -486,9 +486,11 @@ void setup() {
   // SD Card Initialization
   // We need 6 open files concurrently when parsing a new chapter
   if (!Storage.begin()) {
-    LOG_ERR("MAIN", "SD card initialization failed");
+    LOG_ERR("MAIN", "SD card initialization failed (err=0x%02X data=0x%02X)", Storage.errorCode(), Storage.errorData());
     setupDisplayAndFonts(isSilentReboot);
-    activityManager.goToFullScreenMessage("SD card error", EpdFontFamily::BOLD);
+    char errText[64];
+    snprintf(errText, sizeof(errText), "SD card error\n(err=0x%02X data=0x%02X)", Storage.errorCode(), Storage.errorData());
+    activityManager.goToFullScreenMessage(errText, EpdFontFamily::BOLD);
     return;
   }
 
@@ -548,7 +550,7 @@ void setup() {
       // Most devices return to sleep after a USB-powered cold boot.
       LOG_DBG("MAIN", "Wakeup reason: After USB Power");
 #if FREEINK_DEVICE_X4PRO || FREEINK_DEVICE_X4CLASSIC || FREEINK_DEVICE_PAPERMONO || FREEINK_DEVICE_EEGO_A4 || \
-    FREEINK_DEVICE_METALIO_EINK4
+    FREEINK_DEVICE_METALIO_EINK4 || FREEINK_DEVICE_SUPERMINI_S3_WEACT37
       // X4 Pro must stay awake so USB Serial/JTAG remains available after leaving
       // USB Drive and reconnecting the cable. Paper Mono has no armable GPIO wake
       // (its button is behind the PMIC). Metalio also needs native USB available
@@ -720,6 +722,9 @@ void loop() {
     lastMemPrint = millis();
   }
 
+  // Check for any user activity (button press or release) or active background work
+  static unsigned long lastActivityTime = millis();
+
   // Handle incoming serial commands,
   // nb: we use logSerial from logging to avoid deprecation warnings
   if (logSerial.available() > 0) {
@@ -727,7 +732,151 @@ void loop() {
     if (line.startsWith("CMD:")) {
       String cmd = line.substring(4);
       cmd.trim();
-      if (cmd == "SCREENSHOT") {
+      lastActivityTime = millis();
+      static String currentBookPath = "";
+      if (cmd.startsWith("OPEN:")) {
+        String path = cmd.substring(5);
+        path.trim();
+        currentBookPath = path;
+        logSerial.printf("[CMD] Opening book: %s\n", path.c_str());
+        activityManager.goToReader(path.c_str());
+      } else if (cmd.startsWith("ROTATE:")) {
+        int orient = cmd.substring(7).toInt();
+        if (orient >= 0 && orient < 4) {
+          SETTINGS.orientation = orient;
+          SETTINGS.saveToFile();
+          logSerial.printf("[CMD] Orientation set to %d\n", orient);
+          String b = currentBookPath.length() > 0 ? currentBookPath : String(APP_STATE.openEpubPath.c_str());
+          if (b.length() > 0) {
+            activityManager.goToReader(b.c_str());
+          } else {
+            activityManager.goHome();
+          }
+        }
+      } else if (cmd.startsWith("FONTSIZE:")) {
+        int sz = cmd.substring(9).toInt();
+        SETTINGS.fontPointSize = sz;
+        SETTINGS.saveToFile();
+        logSerial.printf("[CMD] Font size set to %d pt\n", sz);
+        String b = currentBookPath.length() > 0 ? currentBookPath : String(APP_STATE.openEpubPath.c_str());
+        if (b.length() > 0) {
+          activityManager.goToReader(b.c_str());
+        }
+      } else if (cmd.startsWith("IMAGES:")) {
+        int img = cmd.substring(7).toInt();
+        SETTINGS.imageRendering = img;
+        SETTINGS.saveToFile();
+        logSerial.printf("[CMD] Image rendering set to %d\n", img);
+        String b = currentBookPath.length() > 0 ? currentBookPath : String(APP_STATE.openEpubPath.c_str());
+        if (b.length() > 0) {
+          activityManager.goToReader(b.c_str());
+        }
+      } else if (cmd.startsWith("FONT:")) {
+        int f = cmd.substring(5).toInt();
+        SETTINGS.fontFamily = f;
+        SETTINGS.saveToFile();
+        logSerial.printf("[CMD] Font family set to %d\n", f);
+        String b = currentBookPath.length() > 0 ? currentBookPath : String(APP_STATE.openEpubPath.c_str());
+        if (b.length() > 0) {
+          activityManager.goToReader(b.c_str());
+        }
+      } else if (cmd.startsWith("MARGIN:")) {
+        int m = cmd.substring(7).toInt();
+        SETTINGS.screenMargin = m;
+        SETTINGS.saveToFile();
+        logSerial.printf("[CMD] Screen margin set to %d px\n", m);
+        String b = currentBookPath.length() > 0 ? currentBookPath : String(APP_STATE.openEpubPath.c_str());
+        if (b.length() > 0) activityManager.goToReader(b.c_str());
+      } else if (cmd.startsWith("HYPHEN:")) {
+        int h = cmd.substring(7).toInt();
+        SETTINGS.hyphenationEnabled = (h != 0) ? 1 : 0;
+        SETTINGS.saveToFile();
+        logSerial.printf("[CMD] Hyphenation set to %d\n", SETTINGS.hyphenationEnabled);
+        String b = currentBookPath.length() > 0 ? currentBookPath : String(APP_STATE.openEpubPath.c_str());
+        if (b.length() > 0) activityManager.goToReader(b.c_str());
+      } else if (cmd.startsWith("ALIGN:")) {
+        int a = cmd.substring(6).toInt();
+        if (a >= 0 && a < CrossPointSettings::PARAGRAPH_ALIGNMENT_COUNT) {
+          SETTINGS.paragraphAlignment = a;
+          SETTINGS.saveToFile();
+          logSerial.printf("[CMD] Alignment set to %d (0=Justify, 1=Left, 4=Book)\n", a);
+          String b = currentBookPath.length() > 0 ? currentBookPath : String(APP_STATE.openEpubPath.c_str());
+          if (b.length() > 0) activityManager.goToReader(b.c_str());
+        }
+      } else if (cmd.startsWith("SPACING:")) {
+        int s = cmd.substring(8).toInt();
+        if (s >= 0 && s < CrossPointSettings::LINE_COMPRESSION_COUNT) {
+          SETTINGS.lineSpacing = s;
+          SETTINGS.saveToFile();
+          logSerial.printf("[CMD] Line spacing set to %d (0=Tight, 1=Normal, 2=Wide)\n", s);
+          String b = currentBookPath.length() > 0 ? currentBookPath : String(APP_STATE.openEpubPath.c_str());
+          if (b.length() > 0) activityManager.goToReader(b.c_str());
+        }
+      } else if (cmd.startsWith("PARASPACE:")) {
+        int ps = cmd.substring(10).toInt();
+        SETTINGS.extraParagraphSpacing = (ps != 0) ? 1 : 0;
+        SETTINGS.saveToFile();
+        logSerial.printf("[CMD] Extra paragraph spacing set to %d\n", SETTINGS.extraParagraphSpacing);
+        String b = currentBookPath.length() > 0 ? currentBookPath : String(APP_STATE.openEpubPath.c_str());
+        if (b.length() > 0) activityManager.goToReader(b.c_str());
+      } else if (cmd.startsWith("STATUSBAR:")) {
+        int sb = cmd.substring(10).toInt();
+        if (sb == 0) {
+          SETTINGS.statusBarTitle = CrossPointSettings::STATUS_BAR_TITLE::HIDE_TITLE;
+          SETTINGS.statusBarChapterPageCount = 0;
+          SETTINGS.statusBarBookProgressPercentage = 0;
+          SETTINGS.statusBarProgressBar = CrossPointSettings::STATUS_BAR_PROGRESS_BAR::HIDE_PROGRESS;
+          SETTINGS.statusBarBattery = 0;
+          SETTINGS.statusBarClock = CrossPointSettings::STATUS_BAR_CLOCK_MODE::STATUS_BAR_CLOCK_HIDE;
+        } else {
+          SETTINGS.statusBarTitle = CrossPointSettings::STATUS_BAR_TITLE::CHAPTER_TITLE;
+          SETTINGS.statusBarChapterPageCount = 1;
+          SETTINGS.statusBarBookProgressPercentage = 1;
+          SETTINGS.statusBarProgressBar = CrossPointSettings::STATUS_BAR_PROGRESS_BAR::HIDE_PROGRESS;
+          SETTINGS.statusBarBattery = 1;
+        }
+        SETTINGS.saveToFile();
+        logSerial.printf("[CMD] Status bar set to %s\n", (sb == 0) ? "HIDDEN (Full Screen Text)" : "VISIBLE");
+        String b = currentBookPath.length() > 0 ? currentBookPath : String(APP_STATE.openEpubPath.c_str());
+        if (b.length() > 0) activityManager.goToReader(b.c_str());
+      } else if (cmd.startsWith("REFRESHFREQ:")) {
+        int rf = cmd.substring(12).toInt();
+        SETTINGS.refreshFrequency = rf;
+        SETTINGS.saveToFile();
+        logSerial.printf("[CMD] Refresh frequency set to %d\n", rf);
+      } else if (cmd == "REFRESH" || cmd == "FORCEREFRESH") {
+        logSerial.println("[CMD] Forcing full screen clean refresh");
+        activityManager.handleForcedRefresh();
+      } else if (cmd == "STATUS") {
+        String b = currentBookPath.length() > 0 ? currentBookPath : String(APP_STATE.openEpubPath.c_str());
+        logSerial.printf("[STATUS] Orient=%d, FontSize=%d pt, Images=%d, Family=%d, Margin=%d px, Hyphen=%d, Align=%d, Spacing=%d, ParaSpace=%d, Book=%s\n",
+          SETTINGS.orientation, SETTINGS.fontPointSize, SETTINGS.imageRendering, SETTINGS.fontFamily,
+          SETTINGS.screenMargin, SETTINGS.hyphenationEnabled, SETTINGS.paragraphAlignment, SETTINGS.lineSpacing,
+          SETTINGS.extraParagraphSpacing, b.c_str());
+      } else if (cmd == "HOME") {
+        logSerial.println("[CMD] Going home");
+        activityManager.goHome();
+      } else if (cmd == "FILES") {
+        logSerial.println("[CMD] Going to file browser");
+        activityManager.goToFileBrowser();
+      } else if (cmd == "SETTINGS") {
+        logSerial.println("[CMD] Going to settings");
+        activityManager.goToSettings();
+      } else if (cmd == "NEXT" || cmd == "DOWN") {
+        logSerial.println("[CMD] Simulating NEXT/DOWN");
+        mappedInputManager.simulatePress(MappedInputManager::Button::Down);
+        mappedInputManager.simulatePress(MappedInputManager::Button::PageForward);
+      } else if (cmd == "PREV" || cmd == "UP") {
+        logSerial.println("[CMD] Simulating PREV/UP");
+        mappedInputManager.simulatePress(MappedInputManager::Button::Up);
+        mappedInputManager.simulatePress(MappedInputManager::Button::PageBack);
+      } else if (cmd == "SELECT" || cmd == "CONFIRM") {
+        logSerial.println("[CMD] Simulating SELECT/CONFIRM");
+        mappedInputManager.simulatePress(MappedInputManager::Button::Confirm);
+      } else if (cmd == "BACK" || cmd == "MENU") {
+        logSerial.println("[CMD] Simulating BACK/MENU");
+        mappedInputManager.simulatePress(MappedInputManager::Button::Back);
+      } else if (cmd == "SCREENSHOT") {
         const uint32_t bufferSize = display.getBufferSize();
         logSerial.printf("SCREENSHOT_START:%d\n", bufferSize);
         uint8_t* buf = display.getFrameBuffer();
@@ -737,8 +886,6 @@ void loop() {
     }
   }
 
-  // Check for any user activity (button press or release) or active background work
-  static unsigned long lastActivityTime = millis();
   if (gpio.wasAnyPressed() || gpio.wasAnyReleased() || gpio.wasTouchActivity() || halTiltSensor.hadActivity() ||
       activityManager.preventAutoSleep()) {
     lastActivityTime = millis();         // Reset inactivity timer
